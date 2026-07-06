@@ -41,7 +41,7 @@
   Their effectiveness, however, is limited on two sides: randomly or rule-initialized populations ignore instance-specific structure, while the conventional single-population design couples convergence and diversity, leaving the initial population hard to control and the final Pareto front weak in both quality and stability.
   To strengthen the search on both sides, this paper develops a heterogeneous dual-population evolutionary optimization approach guided by an instance-specific learned prior: offline, an edge-conditioned graph neural network with global attention pooling encodes each instance as a static heterogeneous disjunctive graph and predicts a distribution over dispatching-rule combinations from multi-objective soft labels.
   Online, this distribution drives the heterogeneous initialization of two complementary populations: a main population that allocates individuals across rule combinations in proportion to the full predicted distribution for broad coverage, and an exploratory population seeded by the single highest-probability rule combination for deep search, with the two coordinated by bidirectional exchange and adaptive mixed evolution.
-  On synthetic instances and the public BehnkeGeiger benchmark, the learned prior alone improves the hypervolume by 123.6\% over a randomly initialized NSGA-II and the complete framework adds a further 30.8\% over this single-population prior, attaining the best hypervolume, IGD, and distribution stability ($\Delta$, $\Delta_v$) among the compared methods on both datasets.
+  On synthetic instances and the public BehnkeGeiger benchmark, the learned prior alone improves the hypervolume by 123.6\% over a randomly initialized NSGA-II and the complete framework adds a further 30.8\% over this single-population prior, attaining the best hypervolume, IGD, and front-distribution metrics---spacing $\Delta$ and its cross-run stability $\Delta_v$---among the compared methods on both datasets.
 }
 
 \keywords{Flexible job shop scheduling, Multi-objective optimization, Advanced manufacturing, Graph neural network, Dispatching-rule recommendation, Dual-population evolutionary algorithm}
@@ -664,7 +664,7 @@ These limitations suggest natural extensions toward dynamic manufacturing enviro
 
 This paper developed a heterogeneous dual-population evolutionary optimization approach for multi-objective FJSP, in which an instance-specific learned prior strengthens evolutionary search on two fronts. A static heterogeneous disjunctive graph and an edge-conditioned GNN predictor learn instance-aware dispatching-rule distributions from offline scheduling data, and the learned distribution guides the initialization of two complementary populations: a main population for Pareto-front breadth and an exploratory population for intensified search around a high-quality core. Bidirectional exchange and AME coordinate the two populations during optimization.
 
-Experiments on synthetic instances and the public BehnkeGeiger benchmark showed that the approach improved Pareto-front quality and distribution stability compared with single-population and dual-population baselines. On the custom validation set, the full framework improved HV by 15.3\% over the dual-population baseline without AME, by 30.8\% over the single-population learned prior, and by 192.5\% over random NSGA-II, while reducing the spacing $\Delta$ and its variance $\Delta_v$ by 36.7\% and 31.3\%. These results show that strengthening multi-objective evolutionary search with an instance-specific learned prior and a heterogeneous dual-population structure yields consistent and complementary gains.
+Experiments on synthetic instances and the public BehnkeGeiger benchmark showed that the approach improved Pareto-front quality, distribution uniformity, and cross-run stability compared with single-population and dual-population baselines. On the custom validation set, the full framework improved HV by 15.3\% over the dual-population baseline without AME, by 30.8\% over the single-population learned prior, and by 192.5\% over random NSGA-II, while reducing the spacing $\Delta$ and its variance $\Delta_v$ by 36.7\% and 31.3\%. These results show that strengthening multi-objective evolutionary search with an instance-specific learned prior and a heterogeneous dual-population structure yields consistent and complementary gains.
 
 Future work will extend the framework to dynamic FJSP with machine breakdowns, order arrivals, and changing processing conditions. More realistic energy-consumption objectives can also be incorporated beyond workload-based proxies. Another promising direction is to combine learned scheduling priors with explainable decision-support interfaces so that production planners can understand why different Pareto schedules are recommended.
 
@@ -680,15 +680,15 @@ The authors have no relevant financial or non-financial interests to disclose.
 
 \subsection*{Author contributions}
 
-Changqi Han contributed to conceptualization, methodology, software, validation, investigation, and writing of the original draft. Jie He contributed to supervision, methodology, and manuscript review and editing. Shihong Duan contributed to supervision and manuscript review and editing. All authors read and approved the final manuscript.
+Jie He contributed to conceptualization, methodology, software, and writing of the original draft. Changqi Han contributed to methodology, software, validation, and investigation. Di Gu contributed to validation, data curation, and investigation. Yue Qi contributed to methodology, formal analysis, and manuscript review and editing. Shihong Duan contributed to supervision, project administration, and manuscript review and editing. Yue Qi and Shihong Duan are the corresponding authors. All authors read and approved the final manuscript.
 
 \subsection*{Data availability}
 
-The datasets generated and analyzed during the current study are available from the corresponding author on reasonable request.
+The datasets generated and analyzed during the current study are available from the corresponding authors on reasonable request.
 
 \subsection*{Code availability}
 
-The code generated during the current study is not publicly available, as it forms part of ongoing research and further development. The methodology is described in detail in this paper; further clarification is available from the corresponding author on reasonable request.
+The code generated during the current study is not publicly available, as it forms part of ongoing research and further development. The methodology is described in detail in this paper; further clarification is available from the corresponding authors on reasonable request.
 
 \bibliography{references}
 
