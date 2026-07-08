@@ -1,4 +1,4 @@
-\documentclass[pdflatex,iicol,sn-mathphys-num]{sn-jnl}
+\documentclass[pdflatex,iicol,Numbered,sn-basic]{sn-jnl}
 
 \usepackage{graphicx}
 \usepackage{multirow}
@@ -17,6 +17,7 @@
 \usepackage{tabularx}
 \usepackage{makecell}
 \usepackage{stfloats}
+\usepackage{microtype}
 \hypersetup{hypertexnames=false}
 
 \raggedbottom
@@ -32,16 +33,17 @@
 \author[1]{\fnm{Di} \sur{Gu}}\email{gudigd@163.com}
 \author*[1]{\fnm{Yue} \sur{Qi}}\email{qiyuee@ustb.edu.cn}
 \author*[1]{\fnm{Shihong} \sur{Duan}}\email{duansh@ustb.edu.cn}
+\author[1]{\fnm{Jian} \sur{Liu}}
 
 \affil*[1]{\orgdiv{School of Computer and Communication Engineering}, \orgname{University of Science and Technology Beijing}, \orgaddress{\city{Beijing}, \postcode{100083}, \country{China}}}
 
 
 \abstract{
   Flexible job shop scheduling (FJSP) under multiple conflicting objectives is a core decision problem in flexible manufacturing, for which multi-objective evolutionary algorithms are attractive because a single run returns a set of trade-off schedules.
-  Their effectiveness, however, is limited on two sides: randomly or rule-initialized populations ignore instance-specific structure, while the conventional single-population design couples convergence and diversity, leaving the initial population hard to control and the final Pareto front weak in both quality and stability.
-  To strengthen the search on both sides, this paper develops a heterogeneous dual-population evolutionary optimization approach guided by an instance-specific learned prior: offline, an edge-conditioned graph neural network with global attention pooling encodes each instance as a static heterogeneous disjunctive graph and predicts a distribution over dispatching-rule combinations from multi-objective soft labels.
-  Online, this distribution drives the heterogeneous initialization of two complementary populations: a main population that allocates individuals across rule combinations in proportion to the full predicted distribution for broad coverage, and an exploratory population seeded by the single highest-probability rule combination for deep search, with the two coordinated by bidirectional exchange and adaptive mixed evolution.
-  On synthetic instances and the public BehnkeGeiger benchmark, the learned prior alone improves the hypervolume by 123.6\% over a randomly initialized NSGA-II and the complete framework adds a further 30.8\% over this single-population prior, attaining the best hypervolume, IGD, and front-distribution metrics---spacing $\Delta$ and its cross-run stability $\Delta_v$---among the compared methods on both datasets.
+  Their effectiveness is limited by two practical issues. Randomly or rule-initialized populations ignore instance-specific structure, and the conventional single-population design makes convergence and diversity difficult to control in the same search process.
+  To address these issues, this paper develops a heterogeneous dual-population evolutionary optimization approach guided by an instance-specific learned prior: offline, an edge-conditioned graph neural network with global attention pooling encodes each instance as a static heterogeneous disjunctive graph and predicts a distribution over dispatching-rule combinations from multi-objective soft labels.
+  Online, the predicted distribution initializes two populations with different search roles: a main population that allocates individuals across rule combinations in proportion to the full predicted distribution for broad coverage, and an exploratory population seeded by the single highest-probability rule combination for deep search. Bidirectional exchange and adaptive mixed evolution link the two searches.
+  On the synthetic validation set, the learned prior alone improves the hypervolume by 123.7\% over a randomly initialized NSGA-II and the complete framework adds a further 30.7\% over this single-population prior. Across both the synthetic instances and the public BehnkeGeiger benchmark, the complete framework attains the best hypervolume, IGD, and front-distribution metrics---spacing $\Delta$ and its cross-run stability $\Delta_v$---among the compared methods.
 }
 
 \keywords{Flexible job shop scheduling, Multi-objective optimization, Advanced manufacturing, Graph neural network, Dispatching-rule recommendation, Dual-population evolutionary algorithm}
@@ -55,25 +57,25 @@ The flexible job shop scheduling problem (FJSP) is therefore a representative op
 It is also NP-hard, and the search space grows rapidly with the number of jobs, machines, operations, and routing alternatives \cite{garey1976complexity,li2022survey}.
 
 Practical workshop schedules are rarely evaluated by a single objective. Minimizing the makespan improves delivery efficiency, reducing the maximum machine workload alleviates bottleneck resources, and reducing the total workload is related to resource utilization and workload-related consumption.
-These objectives are correlated but conflicting: assigning many operations to the fastest machines may shorten completion time but can also increase bottleneck congestion.
-Multi-objective FJSP is thus a natural decision-support formulation for flexible manufacturing systems, where managers require a set of trade-off schedules rather than a single black-box solution.
+The three objectives are correlated but conflicting: assigning many operations to the fastest machines may shorten completion time but can also increase bottleneck congestion.
+Multi-objective FJSP is thus a natural decision-support formulation for flexible manufacturing systems, where managers require a set of trade-off schedules instead of a single black-box solution.
 
 Exact optimization methods, such as mixed-integer linear programming and branch-and-bound, can guarantee optimality on small instances, but their computational cost grows exponentially with problem size and limits their use in medium- and large-scale flexible manufacturing environments.
-Deep reinforcement learning (DRL) has recently been used to learn dispatching policies from graph-structured scheduling states \cite{zhang2020learning,song2022flexible,lei2022multi,wan2024flexible}. However, DRL methods usually require extensive online interaction with simulated environments, are sensitive to the training instance distribution, and need carefully designed rewards to balance conflicting production objectives; their step-wise decision form is also less suited to producing a complete Pareto set in a single run. More importantly, the heterogeneous disjunctive graphs used in these dynamic-decision policies mainly encode dynamic quantities, such as processing progress and machine idle time, as node features, leave virtual head and tail nodes out of the embedding, and lack a unified encoding for heterogeneous edge types. Such representations are not directly aligned with the static supervised setting considered in this paper, where the complete FJSP instance is mapped to dispatching-rule priors before the evolutionary search starts.
-This tension points to a different use of learning: rather than training a reinforcement-learning agent to make online dispatching decisions, a model can be trained offline by supervised learning to capture the static mapping from instance structure to promising dispatching strategies, providing a prior that initializes rather than replaces a population-based search.
+Deep reinforcement learning (DRL) has recently been used to learn dispatching policies from graph-structured scheduling states \cite{zhang2020learning,song2022flexible,lei2022multi,wan2024flexible}. However, DRL methods usually require extensive online interaction with simulated environments, are sensitive to the training instance distribution, and need carefully designed rewards to balance conflicting production objectives. Their step-wise decision form is also less suited to producing a complete Pareto set in a single run. More importantly, the heterogeneous disjunctive graphs used in these dynamic-decision policies mainly encode dynamic quantities, such as processing progress and machine idle time, as node features, leave virtual head and tail nodes out of the embedding, and lack a unified encoding for heterogeneous edge types. Such representations are not directly aligned with the static supervised setting considered in this paper, where the complete FJSP instance is mapped to dispatching-rule priors before the evolutionary search starts.
+The learning model is therefore used as an offline prior generator. It captures the static mapping from instance structure to promising dispatching strategies and initializes a population-based search without replacing it.
 
 Evolutionary algorithms, especially Non-dominated Sorting Genetic Algorithm II (NSGA-II) \cite{deb2002fast}, remain attractive for multi-objective FJSP because they can produce a set of non-dominated schedules in a single run. Nevertheless, two limitations remain.
 First, initial populations are often generated randomly or by fixed dispatching rules, so the mapping from instance structure to promising rule strategies is not explicitly learned.
-Second, the conventional single-population structure couples convergence and diversity maintenance in one population. Elite preservation may accelerate convergence but can gradually narrow the population distribution, while diversity-preserving operators alone may not sufficiently exploit high-quality Pareto regions.
+Second, the conventional single-population structure couples convergence and diversity maintenance in one population. Elite preservation may accelerate convergence but can gradually narrow the population distribution. Diversity-preserving operators alone may also fail to exploit high-quality Pareto regions.
 Existing dual-population designs partly address this issue, but many of them use homogeneous initialization or one-way information transfer, making the auxiliary population a passive follower rather than an active search component.
-In short, an instance-aware initialization prior and a heterogeneous, bidirectionally coupled dual-population structure have rarely been designed jointly: learned priors are seldom tailored to populations that play different roles, while existing dual-population search rarely receives prior guidance from instance structure.
+In short, an instance-aware initialization prior and a heterogeneous, bidirectionally coupled dual-population structure have rarely been designed as one method. Learned priors are seldom tailored to populations with different search roles, and existing dual-population search rarely receives prior guidance from instance structure.
 
-To address these limitations, this paper develops an enhanced multi-objective evolutionary optimization approach for FJSP that strengthens NSGA-II on the two fronts identified above. Each limitation is targeted by one complementary mechanism. The blind-initialization limitation is addressed by an offline graph neural network (GNN) that learns an instance-specific distribution over dispatching-rule combinations and turns it into a structure-aware initialization prior.
-The convergence--diversity coupling is addressed by an online heterogeneous dual-population search, in which a main and an exploratory population consume the same prior in different ways and exchange information bidirectionally to optimize makespan, bottleneck workload, and total workload. These two mechanisms correspond to the following two contributions.
+To address these limitations, this paper develops an enhanced multi-objective evolutionary optimization approach for FJSP. The blind-initialization limitation is addressed by an offline graph neural network (GNN) that learns an instance-specific distribution over dispatching-rule combinations and turns it into a structure-aware initialization prior.
+The convergence--diversity coupling is addressed by an online heterogeneous dual-population search, in which a main and an exploratory population consume the same prior in different ways and exchange information bidirectionally to optimize makespan, bottleneck workload, and total workload. The contributions are as follows.
 
 \begin{enumerate}
   \item \textbf{A GNN-based dispatching-rule distribution predictor for multi-objective FJSP (addressing blind initialization).} Each instance is encoded as a static heterogeneous disjunctive graph with virtual head and tail nodes, refined directed edge sets, and unified node and edge features. An edge-conditioned convolution (NNConv) with global attention pooling then regresses a probability distribution over dispatching-rule combinations. Multi-objective weighted soft labels over makespan, bottleneck workload, and total workload supervise the predictor, extending graph-based rule prediction from a single-objective to a multi-objective setting.
-  \item \textbf{A graph-guided heterogeneous dual-population cooperative evolutionary algorithm (GNN-HDPCEA-AME, addressing the convergence--diversity coupling).} Guided by the predicted rule distribution, a main population (MP) initialized for broad Pareto-front coverage and an exploratory population (EP) initialized for intensified search around promising regions evolve cooperatively. A bidirectional exchange mechanism and an adaptive mixed evolution (AME) strategy coordinate convergence and diversity throughout the search.
+  \item \textbf{A graph neural network-guided heterogeneous dual-population cooperative evolutionary algorithm with adaptive mixed evolution (GNN-HDPCEA-AME).} Guided by the predicted rule distribution, a heterogeneous main population (MP) initialized for broad Pareto-front coverage and an exploratory population (EP) initialized for intensified search around promising regions evolve in the same optimization process. A bidirectional exchange mechanism and an adaptive mixed evolution (AME) strategy manage convergence and diversity throughout the search.
 \end{enumerate}
 
 The remainder of this paper is organized as follows.
@@ -84,11 +86,11 @@ Section~\ref{sec:experimental_design} describes the experimental design.
 Section~\ref{sec:results} reports and discusses the results.
 Section~\ref{sec:conclusion} concludes the paper.
 
-\section{Related work}\label{sec:literature}
+\section{Related Work}\label{sec:literature}
 
-\subsection{Flexible job shop scheduling in manufacturing systems}\label{subsec:fjsp_lit}
+\subsection{Flexible Job Shop Scheduling in Manufacturing Systems}\label{subsec:fjsp_lit}
 
-FJSP extends the classical job shop scheduling problem by allowing each operation to be processed on one of multiple eligible machines. This additional routing flexibility increases modeling realism but also enlarges the search space.
+FJSP extends the classical job shop scheduling problem by allowing each operation to be processed on one of multiple eligible machines. The additional routing flexibility increases modeling realism but also enlarges the search space.
 Brandimarte \cite{brandimarte1993routing} introduced representative benchmark instances and solved FJSP by tabu search. Hurink et al. \cite{hurink1994tabu} further studied job-shop scheduling with multi-purpose machines.
 Since then, FJSP has become a standard benchmark problem for manufacturing scheduling and has been extended to integrated scheduling, distributed shops, energy-aware scheduling, and dynamic production environments \cite{li2022survey}.
 
@@ -96,31 +98,31 @@ In advanced manufacturing contexts, the value of a schedule is not limited to co
 Multi-objective formulations therefore better represent practical decision-making requirements. Early multi-objective FJSP methods used fuzzy logic, evolutionary search, or hybrid metaheuristics to approximate Pareto trade-offs \cite{kacem2002pareto}.
 Recent work continues to use evolutionary and swarm intelligence methods because they naturally maintain a population of candidate schedules and can return multiple trade-off solutions in a single run \cite{gao2019review,zhang2024cooperative}.
 
-\subsection{Learning-assisted scheduling and graph representations}\label{subsec:learning_lit}
+\subsection{Learning-Assisted Scheduling and Graph Representations}\label{subsec:learning_lit}
 Learning-based scheduling methods have received increasing attention because manufacturing data and simulation instances can be used to improve dispatching decisions. DRL methods formulate scheduling as a Markov decision process and learn policies through interaction.
 Zhang et al. \cite{zhang2020learning} learned dispatching rules for job shop scheduling. Song et al. \cite{song2022flexible} combined graph neural networks with DRL for FJSP, and Lei et al. \cite{lei2022multi} developed a multi-action DRL framework. More recent heterogeneous graph approaches further model operation-machine relationships and meta-path structures \cite{wan2024flexible}.
-These learning methods commonly operate on a disjunctive graph, which is the standard structural representation of an FJSP instance.
+Most learning-based schedulers operate on a disjunctive graph, which is the standard structural representation of an FJSP instance.
 In the classical disjunctive graph \cite{roy1964problemes}, operation nodes are linked by conjunctive arcs that encode the precedence order within each job, while disjunctive arcs connect operations competing for the same machine, so machine constraints are represented only implicitly.
 Under machine flexibility, enumerating all such machine-conflict pairs makes the graph dense and hard to process \cite{zhang2020learning}.
 To alleviate this, Song et al. \cite{song2022flexible} proposed a heterogeneous disjunctive graph that introduces machine nodes and replaces the disjunctive arcs with operation-machine edges, reducing edge density and making machine-related constraints explicit.
 
 Although these methods demonstrate the value of graph learning, their primary target is online dispatching. The graph state usually changes during schedule construction, and the model selects one operation or machine action at each decision step.
-This paper uses a different learning target: the complete FJSP instance is encoded as a static graph and mapped to a distribution over dispatching-rule combinations.
-The resulting distribution is not a final schedule; it is an instance-aware prior that initializes and guides the evolutionary search. This design keeps the Pareto-front approximation capability of population-based optimization while using learning to reduce blind initialization.
+Here the learning target is different: the complete FJSP instance is encoded as a static graph and mapped to a distribution over dispatching-rule combinations.
+The resulting distribution is not a final schedule. It is an instance-aware prior that initializes and guides the evolutionary search. The population-based optimizer still approximates the Pareto front, with learning used only to reduce blind initialization.
 For graph neural network input, the graph is stored as an edge-index tensor in which each undirected operation-machine edge is represented by two opposite directed edges, so that messages can be passed in both directions during convolution.
 
-\subsection{Multi-objective evolutionary algorithms for FJSP}\label{subsec:moea_lit}
+\subsection{Multi-Objective Evolutionary Algorithms for FJSP}\label{subsec:moea_lit}
 
 NSGA-II is one of the most widely used multi-objective evolutionary algorithms because of its fast non-dominated sorting and crowding-distance-based selection \cite{deb2002fast}. It is suitable for FJSP because schedule encodings can be directly evolved and evaluated under multiple objectives.
 Nevertheless, random initialization and single-population evolution can be inefficient when the search space is large and the Pareto front is irregular.
 
 Dual-population and multi-population evolutionary algorithms attempt to decouple different search roles by maintaining multiple interacting populations. Recent studies have used cooperative populations, local search, simulated annealing, or learning-assisted mechanisms to improve diversity and convergence \cite{guo2025enhanced,zhang2024cooperative}.
 However, many dual-population designs still use similar initial distributions across populations or transfer information in a single direction.
-For multi-objective FJSP, the complementary role of each population should be explicitly designed: one population should preserve broad front coverage, while another should intensify search around promising regions. This motivates the heterogeneous dual-population mechanism proposed in this study.
+For multi-objective FJSP, each population should have an explicit search role. One population should preserve broad front coverage, and another should intensify search around promising regions. The proposed heterogeneous dual-population mechanism follows this requirement.
 
-\section{Problem description and multi-objective model}\label{sec:problem}
+\section{Problem Description and Multi-Objective Model}\label{sec:problem}
 
-\subsection{FJSP definition}\label{subsec:problem_def}
+\subsection{FJSP Definition}\label{subsec:problem_def}
 
 An FJSP instance is denoted as $\mathcal{I}=(J,M,O,P)$, where $J=\{J_1,\ldots,J_n\}$ is the set of jobs, $M=\{M_1,\ldots,M_m\}$ is the set of machines, $O=\{O_{ij}\}$ is the set of operations, and $P$ stores the processing times. Job $J_i$ contains $n_i$ ordered operations.
 Operation $O_{ij}$ can be processed by a subset of eligible machines $M_{ij}\subseteq M$. If $O_{ij}$ is assigned to machine $M_k$, its processing time is $p_{ijk}$.
@@ -136,8 +138,8 @@ Technological precedence inside each job must be respected:
 where $S_{ij}$ and $C_{ij}$ are the start and completion times of operation $O_{ij}$. Each machine can process at most one operation at a time.
 The detailed disjunctive non-overlap constraints are handled by the decoding procedure of the evolutionary solver.
 
-\subsection{Optimization objectives}\label{subsec:objectives}
-This study considers three production objectives. The first objective is the makespan:
+\subsection{Optimization Objectives}\label{subsec:objectives}
+The model considers three production objectives. The first objective is the makespan:
 \begin{align}
   f_1      & =\min C_{\max},     \\
   C_{\max} & =\max_{i,j} C_{ij}.
@@ -160,12 +162,12 @@ It is used as a workload-related proxy for resource utilization. It should not b
 
 For two feasible schedules $\mathbf{x}$ and $\mathbf{y}$, $\mathbf{x}$ Pareto-dominates $\mathbf{y}$ if all objectives of $\mathbf{x}$ are no worse than those of $\mathbf{y}$ and at least one objective is strictly better. The goal is to obtain an approximate Pareto set $\mathcal{A}$ that is close to the reference front and well distributed across the trade-off surface.
 
-\section{Proposed data-driven dual-population evolutionary framework}\label{sec:method}
+\section{Proposed Data-Driven Dual-Population Evolutionary Framework}\label{sec:method}
 
-\subsection{Overall architecture}\label{subsec:framework}
+\subsection{Overall Architecture}\label{subsec:framework}
 \begin{figure*}[t]
   \centering
-  \includegraphics[width=\textwidth]{images/framework.png}
+  \includegraphics[width=\textwidth]{Fig1_framework.png}
   \caption{Overall architecture of the proposed data-driven heterogeneous dual-population evolutionary framework}
   \label{fig:framework}
 \end{figure*}
@@ -173,17 +175,17 @@ For two feasible schedules $\mathbf{x}$ and $\mathbf{y}$, $\mathbf{x}$ Pareto-do
 The proposed GNN-HDPCEA-AME framework consists of an offline learning stage and an online optimization stage, as illustrated in Fig.~\ref{fig:framework}.
 In the offline stage, historical or simulated FJSP instances are converted into static heterogeneous disjunctive graphs. A pool of dispatching-rule combinations is evaluated under the three objectives, and the multi-objective performance of each rule combination is transformed into a soft probability distribution. A GNN is then trained as a graph-level rule-distribution regressor.
 
-In the online optimization stage, a new FJSP instance is first encoded as a graph and passed through the trained GNN. The predicted rule distribution guides the initialization of two heterogeneous populations in a dual-population NSGA-II framework. The MP maintains broad Pareto-front coverage, while the EP performs intensified search around promising regions. Bidirectional exchange and adaptive mixed evolution connect the two populations throughout the search.
+In the online optimization stage, a new FJSP instance is first encoded as a graph and passed through the trained GNN. The predicted rule distribution guides the initialization of two heterogeneous populations in a dual-population NSGA-II framework. The MP maintains broad Pareto-front coverage. The EP performs intensified search around promising regions. Bidirectional exchange and adaptive mixed evolution connect the two populations throughout the search. The complete online procedure is summarized in Algorithm~\ref{alg:gnn_hdpcea}.
 
 
-\subsection{Heterogeneous disjunctive graph representation}\label{subsec:graph}
+\subsection{Heterogeneous Disjunctive Graph Representation}\label{subsec:graph}
 
 
 
 An FJSP instance is commonly represented as a disjunctive graph, in which machine competition is encoded by disjunctive arcs and machine constraints remain implicit.
 To make machine-related information explicit, a heterogeneous disjunctive graph extracts machines as a separate node type and links each operation to its eligible machines through machine-operation arcs weighted by processing time \cite{song2022flexible}.
-This heterogeneous representation is mainly designed for the dynamic graph states used in DRL-based dispatching, where node features describe the evolving scheduling status.
-Since this paper targets a static supervised-learning setting that maps a complete instance to dispatching-rule priors, the existing heterogeneous disjunctive graph is improved from two aspects: structural adjustment and feature encoding.
+The heterogeneous representation is mainly designed for the dynamic graph states used in DRL-based dispatching, where node features describe the evolving scheduling status.
+Because the present work targets a static supervised-learning setting that maps a complete instance to dispatching-rule priors, the existing heterogeneous disjunctive graph is improved from two aspects: structural adjustment and feature encoding.
 
 The improved heterogeneous disjunctive graph is denoted by $\mathcal{G}^{hetero}(\mathcal{I})=(\mathcal{V},\mathcal{E}^{dir}\cup\mathcal{E}^{undir},X,E)$ and is illustrated in Fig.~\ref{fig:heterogeneous_disjunctive_graph_representation}.
 The node set $\mathcal{V}=\{v_{start}\}\cup\{v_{end}\}\cup\mathcal{V}_M\cup\mathcal{V}_O$ merges operation nodes $\mathcal{V}_O$ and machine nodes $\mathcal{V}_M$ into one set and adds two virtual nodes $v_{start},v_{end}$ carrying global start and terminal semantics.
@@ -197,15 +199,15 @@ For graph neural network input, the graph is stored as an edge-index tensor in w
 
 \begin{figure}[t]
   \centering
-  \includegraphics[width=0.92\linewidth]{images/异构析取图表征.png}
+  \includegraphics[width=0.92\linewidth]{Fig2_heterogeneous_disjunctive_graph.png}
   \caption{Heterogeneous disjunctive graph representation}
   \label{fig:heterogeneous_disjunctive_graph_representation}
 \end{figure}
 
-\subsection{GNN-based dispatching-rule prior learning}\label{subsec:gnn}
+\subsection{GNN-Based Dispatching-Rule Prior Learning}\label{subsec:gnn}
 
 Let $\mathbf{h}_v^{(l)}$ be the embedding of node $v$ at layer $l$ and $\mathbf{e}_{uv}$ be the feature of edge $(u,v)$.
-Edge-conditioned convolution updates node embeddings by generating an edge-specific weight matrix through a neural network $\Theta(\cdot)$:
+Following the message-passing paradigm \cite{gilmer2017neural}, edge-conditioned convolution (NNConv) \cite{simonovsky2017dynamic} updates node embeddings by generating an edge-specific weight matrix through a neural network $\Theta(\cdot)$:
 \begin{equation}
   \mathbf{h}_v^{(l+1)} =
   \sigma\left(
@@ -214,7 +216,7 @@ Edge-conditioned convolution updates node embeddings by generating an edge-speci
   \Theta^{(l)}(\mathbf{e}_{uv})\mathbf{h}_u^{(l)}
   \right),
 \end{equation}
-where $\mathcal{N}(v)$ denotes the neighbors of $v$ and $\sigma(\cdot)$ is a nonlinear activation function. This design allows relation types and processing-time attributes to modulate message passing.
+where $\mathcal{N}(v)$ denotes the neighbors of $v$ and $\sigma(\cdot)$ is a nonlinear activation function. The edge-conditioned update allows relation types and processing-time attributes to modulate message passing.
 
 After two edge-conditioned convolution layers, node embeddings are aggregated by global attention pooling:
 \begin{equation}
@@ -226,12 +228,12 @@ The graph representation $\mathbf{g}$ is passed to a fully connected regression 
 
 \begin{figure*}[t]
   \centering
-  \includegraphics[width=\textwidth]{images/GNN.png}
+  \includegraphics[width=\textwidth]{Fig3_gnn_prior_learning.png}
   \caption{GNN-based dispatching-rule prior learning}
   \label{fig:gnn}
 \end{figure*}
 
-\subsection{Multi-objective soft-label construction}\label{subsec:labels}
+\subsection{Multi-Objective Soft-Label Construction}\label{subsec:labels}
 
 For training instance $\mathcal{I}_t$ and dispatching-rule combination $d_k$, the three objective values are converted into a weighted composite score:
 \begin{align}
@@ -252,25 +254,25 @@ The target soft label is obtained by a softmin transform:
   \frac{\exp(-y_{t,k}^{multi})}
   {\sum_{l=1}^{K}\exp(-y_{t,l}^{multi})}.
 \end{equation}
-Thus, better rule combinations receive higher probabilities, while competitive non-best rules still retain supervision signals.
+Better rule combinations therefore receive higher probabilities. Competitive non-best rules still retain supervision signals.
 The GNN is trained by minimizing the Kullback--Leibler divergence between $\mathbf{p}^{multi}$ and $\hat{\mathbf{p}}$.
 
-\subsection{Heterogeneous dual-population initialization}\label{subsec:init}
+\subsection{Heterogeneous Dual-Population Initialization}\label{subsec:init}
 
 The trained GNN outputs a predicted distribution $\hat{\mathbf{p}}$ that encodes the relative quality of the $K$ dispatching-rule combinations under the three weighted objectives.
 Since it remains a $K$-dimensional probability vector independent of the number of objectives, the multi-objective preference is carried entirely by $\hat{\mathbf{p}}$ and can be consumed directly during initialization.
-To decouple convergence from diversity, two populations with complementary roles are initialized from the same prior: the Main Population (MP) is responsible for covering a broad region of the Pareto front, whereas the Exploratory Population (EP) is responsible for intensified search around a high-quality core region.
+To decouple convergence from diversity, two populations with different roles are initialized from the same prior. The Main Population (MP) covers a broad region of the Pareto front. The Exploratory Population (EP) starts near a high-quality core region for intensified search.
 Because these two roles impose different requirements on the initial population, the shared prior $\hat{\mathbf{p}}$ is exploited in two distinct ways.
 
-Maintaining broad front coverage calls for an initial population that is diverse and spread over several promising rule combinations rather than concentrated on one.
+Maintaining broad front coverage calls for an initial population that is diverse and spread over several promising rule combinations instead of concentrated on one.
 The MP is therefore initialized by a confidence-driven exploitation--exploration strategy (denoted AdaptiveProbEE), which allocates individuals across rule combinations in proportion to $\hat{\mathbf{p}}$ and adapts the exploitation ratio to the prediction confidence.
 The confidence is measured by the normalized entropy of $\hat{\mathbf{p}}$:
 \begin{equation}
   C = 1-\frac{H(\hat{\mathbf{p}})}{\ln K},\qquad
   H(\hat{\mathbf{p}})=-\sum_{k=1}^{K}\hat{p}_k\ln \hat{p}_k.
 \end{equation}
-A high $C$ indicates a sharp and reliable prediction, so more individuals exploit the high-probability rules; a low $C$ indicates an uncertain prediction, so the exploitation ratio is reduced and more exploratory combinations are sampled.
-This produces a diverse MP that embeds the instance-aware prior while covering a wide region of the search space; the overall procedure is summarized in Algorithm~\ref{alg:adaptiveprobee}.
+A high $C$ indicates a sharp and reliable prediction, so more individuals exploit the high-probability rules. A low $C$ indicates an uncertain prediction, so the exploitation ratio is reduced and more exploratory combinations are sampled.
+The resulting MP embeds the instance-aware prior and covers a wide region of the search space. Algorithm~\ref{alg:adaptiveprobee} summarizes the procedure.
 
 \begin{algorithm}[t]
   \caption{AdaptiveProbEE: confidence-driven initialization of MP}
@@ -329,17 +331,17 @@ Since the top-predicted rule usually corresponds to the best overall multi-objec
 \end{algorithm}
 
 
-\subsection{Bidirectional population exchange and adaptive mixed evolution}\label{subsec:exchange_ame}
+\subsection{Bidirectional Population Exchange and Adaptive Mixed Evolution}\label{subsec:exchange_ame}
 
-If the two populations evolved in isolation, their complementary strengths could not be shared: the MP would lack the near-front solutions discovered by the EP's exploitation, while the EP, constrained by its homogeneous initialization, would struggle to reach more diverse regions.
-A bidirectional exchange is therefore introduced so that the two populations periodically reinforce each other.
+If the two populations evolved in isolation, useful search information would remain separated. The MP would not receive the near-front solutions discovered by the EP's local exploitation. The EP would also remain close to its homogeneous seed region and would have limited access to sparse parts of the front.
+A bidirectional exchange is therefore introduced for periodic information sharing.
 
 Every exchange period, the top 10\% elite individuals from EP are injected into MP.
-These individuals are selected from the best non-dominated fronts of EP and replace individuals in the worst front of MP.
-This direction helps MP absorb high-quality solutions discovered by EP's local exploitation.
+The injected individuals are selected from the best non-dominated fronts of EP and replace individuals in the worst front of MP.
+The EP-to-MP transfer helps MP absorb high-quality solutions discovered by local exploitation.
 In the opposite direction, 5\% of MP individuals with large crowding distances are injected into EP as diversity anchors.
-These individuals usually lie in sparse regions of the current front and provide new neighborhoods for EP to explore.
-The exchange ratio is asymmetric because the MP is the primary source of the final Pareto front and benefits from EP elites, whereas the EP relies mainly on its own evolution and needs only a few diverse anchors to redirect its search.
+The selected individuals usually lie in sparse regions of the current front and provide new neighborhoods for EP to explore.
+The exchange ratio is asymmetric because the MP is the primary source of the final Pareto front and benefits from EP elites. The EP relies mainly on its own evolution and needs only a few diverse anchors to redirect its search.
 
 Because the EP is initialized from a single rule combination, its individuals are highly similar, and standard crossover would be ineffective, since recombining near-identical parents rarely yields meaningful new solutions.
 The EP therefore requires an offspring-generation mechanism that does not rely on parent diversity.
@@ -353,16 +355,16 @@ The source ratios $(\alpha_{\mathrm{rand}},\alpha_{\mathrm{ep}},\alpha_{\mathrm{
     n_{\mathrm{mp}}   & =N_{EP}-n_{\mathrm{rand}}-n_{\mathrm{ep}}.
   \end{aligned}
 \end{equation}
-As the search proceeds, the shares of random injection and EP-elite neighborhoods decrease while that of the MP-front neighborhoods increases.
-Early generations rely more on random injection and EP-elite perturbation to break the initial homogeneity of EP, whereas later generations shift more offspring toward the MP front to refine the search around its stabilized, diverse front.
+As the search proceeds, the shares of random injection and EP-elite neighborhoods decrease, and the share of MP-front neighborhoods increases.
+Early generations rely more on random injection and EP-elite perturbation to break the initial homogeneity of EP. Later generations shift more offspring toward the MP front to refine the search around its stabilized, diverse front.
 
-The six neighborhood operators cover both encoding dimensions: three act on the operation sequence with increasing perturbation strength (adjacent swap, insertion, and segment reversal), two act on machine selection (a random single-operation reassignment and a bottleneck-machine batch reassignment that relieves the most-loaded machine), and one perturbs both dimensions jointly.
+The six neighborhood operators cover both encoding dimensions: three act on the operation sequence with increasing perturbation strength (adjacent swap, insertion, and segment reversal), two act on machine selection (a random single-operation reassignment and a bottleneck-machine batch reassignment that relieves the most-loaded machine), and one perturbs both dimensions in a coupled move.
 One operator is selected at random for each offspring, enabling the EP to search sequencing and routing decisions simultaneously.
 
 The overall procedure is illustrated in Fig.~\ref{fig:Exchange_AME}: the MP and EP evolve in parallel through NSGA-II variation and AME, respectively, periodically reinforce each other through the bidirectional exchange, and are finally merged and non-dominated-sorted to produce the output Pareto schedules.
 \begin{figure*}[t]
   \centering
-  \includegraphics[width=\textwidth]{images/Exchange_AME.png}
+  \includegraphics[width=\textwidth]{Fig4_exchange_ame.png}
   \caption{Workflow of Bidirectional population exchange and Adaptive Mixed Evolution (AME) of the EP}
   \label{fig:Exchange_AME}
 \end{figure*}
@@ -383,20 +385,22 @@ The overall procedure is illustrated in Fig.~\ref{fig:Exchange_AME}: the MP and 
 \end{table}
 
 
-\section{Experimental design}\label{sec:experimental_design}
+\section{Experimental Design}\label{sec:experimental_design}
 
-\subsection{Datasets and implementation}\label{subsec:datasets}
+\subsection{Datasets and Implementation}\label{subsec:datasets}
 The GNN predictor was trained and validated on a synthetic FJSP instance set generated by randomized manufacturing parameters.
 The number of jobs was sampled from $\{5,10,15,20\}$, the number of machines from $\{4,6,8,10\}$, the flexibility ratio was set to 0.5, and processing times were sampled from $[1,100]$.
 A total of 1000 instances were generated and split into training and validation sets by stratified sampling.
+The split is performed at the instance level, so the same scheduling instance never appears in both the training and validation subsets.
+The public benchmark is used only for external evaluation after model selection, without retraining the GNN predictor or re-tuning the evolutionary parameters.
 
 Public benchmark evaluation used BehnkeGeiger instances \cite{behnke2012test}.
 Hurink-rdata instances \cite{hurink1994tabu} were not used in the multi-objective evaluation because their processing-time structure leads to limited discrimination in the $W_{\mathrm{total}}$ objective under the current objective definition.
 
 The dispatching-rule pool was constructed from job-sequencing rules and machine-selection rules adopted from Lei et al.~\cite{lei2022multi}. After filtering low-frequency rule combinations, five combinations were retained as GNN output classes: FIFO+SPT, MOPNR+SPT, MOPNR+EET, MWKR+SPT, and MWKR+EET.
 For each instance, every candidate rule combination seeds a standard NSGA-II, and the averaged three-objective performance over $R$ runs is mapped to a soft label via the construction of Section~\ref{subsec:labels}, giving the (instance graph, soft-label) training pairs.
-The parameter, initialization, and GNN-training settings used in the experiments are summarized in Table~\ref{tab:params}; the AdaptiveProbEE values are set according to the role of each term rather than per-instance tuning, and are kept fixed across all benchmarks without re-tuning on the public test sets.
-All experiments were conducted in a Linux-based container environment. The server was equipped with two Intel Xeon Gold 6248R CPUs, 251 GB memory, and two NVIDIA RTX 3090 GPUs. The implementation used Python 3.8.6 and PyTorch 1.7.1 with CUDA 11.0. The multi-objective comparison was carried out on a set of 20 validation instances (and, for the public benchmark, the BehnkeGeiger instances); each stochastic algorithm was independently repeated 10 times, and the reported values are means taken across instances and runs.
+The parameter, initialization, and GNN-training settings used in the experiments are summarized in Table~\ref{tab:params}. The AdaptiveProbEE values are set according to the role of each term instead of per-instance tuning, and are kept fixed across all benchmarks without re-tuning on the public test sets.
+All experiments were conducted in a Linux-based container environment. The server was equipped with two Intel Xeon Gold 6248R CPUs, 251 GB memory, and two NVIDIA RTX 3090 GPUs. The implementation used Python 3.8.6 and PyTorch 1.7.1 with CUDA 11.0. The multi-objective comparison was carried out on a set of 20 validation instances and on the public BehnkeGeiger instances. Each stochastic algorithm was independently repeated 10 times, and the reported values are means taken across instances and runs.
 
 \begin{table}[t]
   \caption{Parameter and hyperparameter settings used in the experiments}
@@ -436,20 +440,22 @@ All experiments were conducted in a Linux-based container environment. The serve
   \end{tabular}
 \end{table}
 
-\subsection{Evaluation metrics}\label{subsec:metrics}
+\subsection{Evaluation Metrics}\label{subsec:metrics}
 
-The quality of the multi-objective solutions is measured by four complementary metrics.
+The quality of the multi-objective solutions is measured by four metrics.
 Hypervolume (HV) reflects both convergence and coverage and is larger when the front dominates a larger objective-space volume. Its reference point is set to $\mathbf{r}=1.1\cdot(\max_i f_1^{(i)},\,\max_i f_2^{(i)},\,\max_i f_3^{(i)})$, i.e.\ $1.1\times$ the per-objective maxima taken over the merged non-dominated solutions of all methods compared in the same experiment.
-The inverted generational distance (IGD) is computed against a reference front merged from the non-dominated solutions of all compared methods, by averaging the distance from each point of this reference front to the obtained front; smaller values indicate a closer approximation.
-Because both the HV reference point $\mathbf{r}$ and the IGD reference front are built from the union of the methods compared within a given experiment, a table that includes methods with more extended fronts pushes $\mathbf{r}$ outward and thereby inflates the HV magnitudes of \emph{all} entries in that table. Consequently the absolute HV and IGD values are comparable within each table but not directly across tables that correspond to different method sets; this effect is made explicit in Section~\ref{subsec:rq3}.
-Spacing $\Delta$ characterizes the uniformity of the solution distribution along the front, and the spacing variance $\Delta_v$ measures the stability of this distribution across repeated runs; smaller values of both are preferable.
+The inverted generational distance (IGD) is computed against a reference front merged from the non-dominated solutions of all compared methods, by averaging the distance from each point of this reference front to the obtained front. Smaller values indicate a closer approximation.
+Because both the HV reference point $\mathbf{r}$ and the IGD reference front are built from the union of the methods compared within a given experiment, a table that includes methods with more extended fronts pushes $\mathbf{r}$ outward and thereby inflates the HV magnitudes of \emph{all} entries in that table. Consequently the absolute HV and IGD values are comparable within each table but not directly across tables that correspond to different method sets. Section~\ref{subsec:rq3} returns to this point when interpreting the ablation tables.
+Spacing $\Delta$ characterizes the uniformity of the solution distribution along the front, and the spacing variance $\Delta_v$ measures the stability of this distribution across repeated runs. Smaller values of both are preferable.
 Together they cover convergence, proximity, distribution uniformity, and stability.
+Thus, the four metrics are not interchangeable: HV and IGD evaluate the global quality of the obtained front, whereas $\Delta$ and $\Delta_v$ check whether that front is evenly and repeatably distributed.
+This distinction is important for scheduling use, because a front with similar proximity can still be less useful if most schedules concentrate around only one production preference.
 
 The prediction quality of the GNN is examined from three aspects, each with one representative metric.
-Distribution-fitting quality is assessed by the Jensen--Shannon (JS) divergence, cosine similarity, and Brier score, which jointly quantify how closely the predicted distribution matches the target soft label in shape and magnitude.
+Distribution-fitting quality is assessed by the Jensen--Shannon (JS) divergence, cosine similarity, and Brier score, which together quantify how closely the predicted distribution matches the target soft label in shape and magnitude.
 Advantage-rule-set matching is assessed by the Top-3 match rate (Top-3 Match), which measures whether the most competitive rule combinations are captured among the top predictions.
 Best-rule hit is assessed by the Top-3 accuracy (Top-3 Accuracy), which measures whether the truly best rule combination falls within the top predicted candidates.
-These three aspects respectively reflect overall distribution fidelity, the coverage of competitive rules, and the reliability of identifying the single best rule.
+The three aspects respectively reflect overall distribution fidelity, the coverage of competitive rules, and the reliability of identifying the single best rule.
 
 
 
@@ -483,7 +489,7 @@ The experiments are organized around the proposed framework and its two core com
 
 \end{enumerate}
 
-\section{Results and discussion}\label{sec:results}
+\section{Results and Discussion}\label{sec:results}
 
 \begin{table*}[b]
   \caption{Multi-objective performance on the custom validation set and the BehnkeGeiger benchmark}
@@ -516,45 +522,46 @@ The experiments are organized around the proposed framework and its two core com
 
 \begin{figure*}[t]
   \centering
-  \includegraphics[width=0.49\textwidth]{images/RQ1-pareto_front_3d-val.png}
+  \includegraphics[width=0.49\textwidth]{Fig5_pareto_front_validation.png}
   \hfill
-  \includegraphics[width=0.49\textwidth]{images/RQ1-pareto_front_3d-test.png}
-  \caption{Three-objective Pareto fronts of GNN-HDPCEA-AME on the custom validation set (left) and the BehnkeGeiger benchmark (right).}
+  \includegraphics[width=0.49\textwidth]{Fig6_pareto_front_behnkegeiger.png}
+  \caption{Three-objective Pareto fronts of GNN-HDPCEA-AME with the custom validation set on the left and the BehnkeGeiger benchmark on the right}
   \label{fig:rq1_pareto_3d}
 \end{figure*}
 
 
-\subsection{Overall framework performance}\label{subsec:rq1}
+\subsection{Overall Framework Performance}\label{subsec:rq1}
 On both the custom validation set and the BehnkeGeiger benchmark, the full GNN-HDPCEA-AME is compared with single-population NSGA-II (random and AdaptiveProbEE initialization) and the dual-population baseline without AME (GNN-HDPCEA-AEE-BSR, in which AEE denotes the AdaptiveProbEE-initialized MP and BSR the BestSingleRule-initialized EP).
-The maximum generation is fixed to $G=100$ for all methods; the dual-population methods use $N_{MP}=N_{EP}=200$, while the single-population baselines use a population of $200$ individuals, so that every population is allocated the same per-population budget.
+The maximum generation is fixed to $G=100$ for all methods. The dual-population methods use $N_{MP}=N_{EP}=200$, and the single-population baselines use a population of $200$ individuals, so every population is allocated the same per-population budget.
+Thus, the dual-population methods use about twice the total number of objective evaluations of the single-population baselines. The comparison evaluates the complete framework under its designed cooperative two-population budget. The different total evaluation budget is reported explicitly instead of hidden in the algorithmic description.
 As shown in Table~\ref{tab:overall_results}, GNN-HDPCEA-AME attains the best HV, IGD, $\Delta$, and $\Delta_v$ among the compared methods on both datasets, whose three-objective Pareto fronts are visualized in Fig.~\ref{fig:rq1_pareto_3d}.
-On the custom validation set, its HV improves over GNN-HDPCEA-AEE-BSR, AdaptiveProbEE, and random NSGA-II by 15.3\%, 30.8\%, and 192.5\%, respectively, while $\Delta$ and $\Delta_v$ are reduced by 36.7\% and 31.3\% relative to GNN-HDPCEA-AEE-BSR.
-Its IGD ($16.82$) is essentially tied with AdaptiveProbEE ($16.85$); the latter, as a single-objective-oriented initialization, already concentrates near several single-objective optima, so its proximity to the merged reference front is comparable, whereas its much larger $\Delta$ and $\Delta_v$ reveal a far less uniform and less stable front.
-These results indicate that, on the custom set, the learned initialization, the heterogeneous dual-population structure, and AME jointly improve front quality, distribution, and stability.
-While GNN-HDPCEA-AME is uniformly best on both datasets, the single-population baselines behave differently across them, which helps separate the distinct roles of the learned prior and the dual-population structure.
+On the custom validation set, its HV improves over GNN-HDPCEA-AEE-BSR, AdaptiveProbEE, and random NSGA-II by 15.3\%, 30.7\%, and 192.5\%, respectively. Relative to GNN-HDPCEA-AEE-BSR, $\Delta$ and $\Delta_v$ are reduced by 36.8\% and 31.5\%.
+Its IGD ($16.82$) is essentially tied with AdaptiveProbEE ($16.85$). The latter, as a single-objective-oriented initialization, already concentrates near several single-objective optima, so its proximity to the merged reference front is comparable. Its much larger $\Delta$ and $\Delta_v$ still indicate a less uniform and less stable front.
+On the custom set, the learned initialization, the heterogeneous dual-population structure, and AME improve front quality, distribution, and stability.
+GNN-HDPCEA-AME is uniformly best on both datasets. The single-population baselines behave differently across the two datasets, which helps separate the roles of the learned prior and the dual-population structure.
 
 
 A closer look at the public benchmark clarifies an apparent anomaly. On BehnkeGeiger, AdaptiveProbEE-seeded single-population NSGA-II reaches a lower HV than random NSGA-II ($1.62$ vs $2.02\times10^{6}$) but a far smaller IGD ($13.70$ vs $846.66$).
-The two metrics capture different aspects: HV rewards the extent of the dominated region, so a widely scattered yet poorly converged random front can dominate a larger axis-aligned volume, whereas the prior concentrates the single population around high-quality compromise regions and thus improves proximity (IGD) at the cost of raw spread.
+The two metrics capture different aspects: HV rewards the extent of the dominated region, so a widely scattered yet poorly converged random front can dominate a larger axis-aligned volume. The prior concentrates the single population around high-quality compromise regions and thus improves proximity (IGD) at the cost of raw spread.
 Because the BehnkeGeiger instances also deviate from the synthetic training distribution, the standalone prior is less able to broaden coverage on this benchmark.
-This limitation is removed once the prior is embedded in the heterogeneous dual-population framework: the breadth-oriented MP and the depth-oriented EP, coordinated by bidirectional exchange and AME, jointly restore and then surpass coverage, so that GNN-HDPCEA-AME attains both the best HV ($3.61\times10^{6}$) and the best IGD ($0.7372$) among the compared methods on this benchmark.
-The learned prior therefore serves as an informative initialization whose full benefit is realized through dual-population cooperation, rather than as a standalone HV booster.
+Embedding the prior in the heterogeneous dual-population framework removes this limitation. The breadth-oriented MP and the depth-oriented EP, linked by bidirectional exchange and AME, restore coverage and then surpass the baselines. GNN-HDPCEA-AME therefore attains both the best HV ($3.61\times10^{6}$) and the best IGD ($0.7372$) among the compared methods on this benchmark.
+The learned prior therefore serves as an informative initialization whose full benefit is realized through dual-population cooperation, not as a standalone HV booster.
 
 
-\subsection{Effectiveness of graph-based prior learning}\label{subsec:rq2}
+\subsection{Effectiveness of Graph-Based Prior Learning}\label{subsec:rq2}
 
-The GNN predictor is trained on the multi-objective performance-label dataset. The samples are stratified by their best-performing rule class and split into training and validation sets at a ratio of $r_{train}=0.8$, keeping the per-class proportions consistent across both subsets. Each step processes a single graph instance, and an equivalent batch is emulated by gradient accumulation; after every epoch the model is evaluated over the whole validation set, the learning-rate scheduler decides whether to decay the rate, and the checkpoint with the lowest validation loss is retained. The random seed is fixed to 42.
+The GNN predictor is trained on the multi-objective performance-label dataset. The samples are stratified by their best-performing rule class and split into training and validation sets at a ratio of $r_{train}=0.8$, keeping the per-class proportions consistent across both subsets. Each step processes a single graph instance, and an equivalent batch is emulated by gradient accumulation. After every epoch, the model is evaluated over the whole validation set, the learning-rate scheduler decides whether to decay the rate, and the checkpoint with the lowest validation loss is retained. The random seed is fixed to 42.
 The main GNN hyperparameters are also listed in Table~\ref{tab:params}.
 All compared graph-readout and convolution-depth variants share the same input, soft labels, and training protocol, so that the differences in Table~\ref{tab:gnn_results} reflect the architecture alone.
 
 Table~\ref{tab:gnn_results} reports both the best value over training (Best) and the converged-stage mean over epochs 51--100 (Mean). NNConv-Attention attains the best result on the three distribution-fitting metrics (JS, Cosine, and Brier) under both Best and Mean, and also the best Top-3 accuracy (best Mean and tied-best Best).
-On Top-3 Match, NNConv-SAG is marginally higher under both statistics (by about 0.01); its hard node selection happens to favor a few top-ranked rules, but this slight edge does not carry over to the other metrics.
+On Top-3 Match, NNConv-SAG is marginally higher under both statistics (by about 0.01). Its hard node selection happens to favor a few top-ranked rules, but this slight edge does not carry over to the other metrics.
 Because Top-3 Match and Top-3 accuracy are close to their ceiling under five rule classes, the models differ little on these two metrics—especially on Best—so the converged Mean better reflects their stable behavior.
 NNConv-Deep-Attention is consistently the worst on both statistics (its JS Mean rises to 0.1541 and its Cosine Mean drops to 0.8331), confirming that simply increasing depth tends to overfit at the current data scale and supporting the two-layer design.
-Because the downstream evolutionary search benefits from a calibrated distribution over competitive rules rather than only the single best rule, the attention readout that preserves all node contributions is preferable.
+Because the downstream evolutionary search benefits from a calibrated distribution over competitive rules instead of only the single best rule, the attention readout that preserves all node contributions is preferable.
 
 \begin{table*}[t]
-  \caption{Multi-objective prediction quality on the validation set.}
+  \caption{Multi-objective prediction quality on the validation set}
   \label{tab:gnn_results}
   \centering
   \footnotesize
@@ -585,18 +592,19 @@ Because the downstream evolutionary search benefits from a calibrated distributi
   Top3-Match and Top3-Acc are near their ceiling under five rule classes, so the epoch-averaged Mean is more discriminative than Best.
 \end{table*}
 
-From a manufacturing decision-support perspective, the GNN does not output a final schedule; it reduces blind initialization by identifying rule combinations that suit the structure of a new FJSP instance, letting the evolutionary solver start from a more informed region while retaining the ability to explore trade-off schedules.
+From a manufacturing decision-support perspective, the GNN does not output a final schedule. It reduces blind initialization by identifying rule combinations that suit the structure of a new FJSP instance, letting the evolutionary solver start from a more informed region and retain the ability to explore trade-off schedules.
 
 
 
 
-\subsection{Rationality of heterogeneous population roles}\label{subsec:rq3}
-This experiment uses the same four Pareto-front metrics as Section~\ref{subsec:rq1} (HV, IGD, $\Delta$, $\Delta_v$). In addition, for the single-population initialization strategies the per-objective averages of makespan, maximum machine workload, and total workload (Table~\ref{tab:single_pop}) are reported to identify which initialization suits the breadth-oriented MP and which the core-focused EP; the dual-population combinations are then compared on the four front metrics (Table~\ref{tab:dual_pop}).
+\subsection{Rationality of Heterogeneous Population Roles}\label{subsec:rq3}
+The role-analysis experiment uses the same four Pareto-front metrics as Section~\ref{subsec:rq1} (HV, IGD, $\Delta$, $\Delta_v$). In addition, for the single-population initialization strategies the per-objective averages of makespan, maximum machine workload, and total workload (Table~\ref{tab:single_pop}) are reported to identify which initialization suits the breadth-oriented MP and which the core-focused EP. The dual-population combinations are then compared on the four front metrics (Table~\ref{tab:dual_pop}).
+The RQ1 comparison and the RQ3 role-analysis experiments are independent experimental batches with different compared strategy sets and independently generated stochastic runs. Repeated strategy names such as Random or AdaptiveProbEE are therefore within-table controls. Their HV, IGD, $\Delta$, and $\Delta_v$ values should be interpreted within the table in which they appear, not compared across Tables~\ref{tab:overall_results}, \ref{tab:single_pop}, and \ref{tab:dual_pop}.
 
-Table~\ref{tab:single_pop} first reports single-population NSGA-II under different initialization strategies. BestSingleRule, although not the strongest on any single objective, attains the best HV and the best $\Delta_v$, indicating a well-covered and stable compromise front; AdaptiveProbEE attains the best IGD and explores the single-objective directions more broadly. This contrast motivates the heterogeneous pairing: AdaptiveProbEE for the breadth-oriented MP and BestSingleRule for the core-focused EP.
+Table~\ref{tab:single_pop} first reports single-population NSGA-II under different initialization strategies. AdaptiveWeighted samples rule combinations according to the learned prior weights. UniformMixed mixes prior-weighted and uniformly sampled rule choices. BestSingleRule uses the highest-probability rule combination, and AdaptiveProbEE is the confidence-driven exploitation--exploration strategy defined in Section~\ref{subsec:init}. BestSingleRule is not the strongest on any single objective, but it attains the best HV and the best $\Delta_v$, indicating a well-covered and stable compromise front. AdaptiveProbEE attains the best IGD and explores the single-objective directions more broadly. The contrast motivates the heterogeneous pairing: AdaptiveProbEE for the breadth-oriented MP and BestSingleRule for the core-focused EP.
 
 \begin{table*}[t]
-  \caption{Single-population NSGA-II under different initialization strategies (validation set)}
+  \caption{Single-population NSGA-II under different initialization strategies on the validation set}
   \label{tab:single_pop}
   \centering
   \footnotesize
@@ -605,11 +613,11 @@ Table~\ref{tab:single_pop} first reports single-population NSGA-II under differe
     \toprule
     Initialization   & HV $\uparrow$               & $\Delta \downarrow$ & $\Delta_v \downarrow$ & IGD $\downarrow$ & Mksp$^\ast$ $\downarrow$ & MaxLoad$^\ast$ $\downarrow$ & TotalLoad$^\ast$ $\downarrow$ \\
     \midrule
-    Random           & $1.93{\times}10^7$          & 12.7339             & 5.8543                & 703.71             & 770.35          & 624.10          & 3484.15          \\
+    Random           & $1.93{\times}10^7$          & \textbf{12.7339}    & 5.8543                & 703.71             & 770.35          & 624.10          & 3484.15          \\
     AdaptiveWeighted & $4.28{\times}10^7$          & 13.4858             & 5.5609                & 34.21              & 697.60          & 576.05          & 2923.25          \\
     UniformMixed     & $4.00{\times}10^7$          & 13.3504             & 5.4539                & 31.22              & 699.65          & 578.05          & 2923.10          \\
     BestSingleRule   & $\mathbf{4.62{\times}10^7}$ & 13.1510             & \textbf{4.7173}       & 44.43              & 713.10          & 576.00          & 2935.70          \\
-    AdaptiveProbEE   & $3.61{\times}10^7$          & \textbf{12.9599}    & 5.0782                & \textbf{24.12}     & \textbf{687.60} & \textbf{563.75} & \textbf{2920.80} \\
+    AdaptiveProbEE   & $3.61{\times}10^7$          & 12.9599             & 5.0782                & \textbf{24.12}     & \textbf{687.60} & \textbf{563.75} & \textbf{2920.80} \\
     \bottomrule
   \end{tabular*}
 
@@ -618,10 +626,12 @@ Table~\ref{tab:single_pop} first reports single-population NSGA-II under differe
   $^\ast$ Mksp, MaxLoad, and TotalLoad denote the average of the best (minimum) makespan, maximum machine load, and total load over independent runs, respectively (lower is better).
 \end{table*}
 
-Table~\ref{tab:dual_pop} then compares dual-population variants under an equal per-population budget ($N_{MP}=N_{EP}=200$, $G=100$), where SFM denotes a temperature-smoothed prior-weighted initialization (SoftmaxTemperature) and the suffix order denotes the MP/EP assignment. Across the four combinations, HV varies from $1.15\times10^8$ to $1.39\times10^8$ and IGD spans roughly fivefold (44.6 to 224.2), showing that the performance gap stems from the MP/EP functional pairing rather than the total population size. Note that the single-population rows (AdaptiveProbEE, Random) carry larger HV here than the same methods in Table~\ref{tab:single_pop}: because Table~\ref{tab:dual_pop} also contains the more extended dual-population fronts, the shared reference point $\mathbf{r}=1.1\cdot(\max f_1,\max f_2,\max f_3)$ is pushed outward and inflates every HV in this table. The two single-population rows therefore serve only as positioning references within Table~\ref{tab:dual_pop} and are not directly comparable to Table~\ref{tab:single_pop}. The adopted GNN-HDPCEA-AEE-BSR combines a large HV ($1.36\times10^8$) with a low IGD (46.99), whereas GNN-HDPCEA-SFM-AEE attains a slightly higher HV but an IGD above 224, indicating a broader yet less accurate front. The bidirectional exchange lets the two populations share complementary information, and the role separation turns the convergence-diversity tension into explicit cooperation, yielding a more stable set of Pareto schedules covering different priorities such as urgent delivery, bottleneck relief, or workload balance.
+Table~\ref{tab:dual_pop} then compares dual-population variants under an equal per-population budget ($N_{MP}=N_{EP}=200$, $G=100$). SFM denotes a temperature-smoothed prior-weighted initialization (SoftmaxTemperature), a smoothed variant of the prior-weighted AdaptiveWeighted idea. The suffix order denotes the MP/EP assignment. As in Section~\ref{subsec:rq1}, each dual-population variant has two populations and therefore uses about twice the total evaluation budget of the single-population positioning rows.
+Across the four combinations, HV varies from $1.15\times10^8$ to $1.39\times10^8$ and IGD spans roughly fivefold (44.6 to 224.2), showing that the performance gap stems from the MP/EP functional pairing rather than the per-population size. The single-population rows (AdaptiveProbEE, Random) carry different metric values from the same method names in Table~\ref{tab:single_pop} because they are independent reruns within this dual-population comparison batch. The HV values are also affected by the broader method set in Table~\ref{tab:dual_pop}. Because this table contains the more extended dual-population fronts, the shared reference point $\mathbf{r}=1.1\cdot(\max f_1,\max f_2,\max f_3)$ is pushed outward and inflates every HV in this table. The two single-population rows therefore serve only as positioning references within Table~\ref{tab:dual_pop} and are not directly comparable to Table~\ref{tab:single_pop}, including for $\Delta$ and $\Delta_v$.
+The adopted GNN-HDPCEA-AEE-BSR combines a large HV ($1.36\times10^8$) with a low IGD (46.99). GNN-HDPCEA-SFM-AEE attains a slightly higher HV but an IGD above 224, indicating a broader yet less accurate front. Bidirectional exchange lets the two populations share search information, and the role separation gives the final schedule set coverage across priorities such as urgent delivery, bottleneck relief, and workload balance.
 
 \begin{table*}[t]
-  \caption{Single- vs. dual-population NSGA-II with different MP/EP combinations (validation set)}
+  \caption{Single- vs. dual-population NSGA-II with different MP/EP combinations on the validation set}
   \label{tab:dual_pop}
   \centering
   \begin{tabular}{lrrrr}
@@ -642,54 +652,45 @@ Table~\ref{tab:dual_pop} then compares dual-population variants under an equal p
 
 
 
-\subsection{Manufacturing implications and limitations}\label{subsec:discussion}
-The proposed framework can be used as an offline-trained and online-applied scheduling decision-support module. Historical or simulated scheduling instances are used to train the GNN predictor offline. For a new production order set, the trained predictor rapidly provides instance-aware dispatching-rule priors, and the dual-population evolutionary solver returns a set of trade-off schedules. Production planners can then choose schedules according to delivery urgency, bottleneck machine availability, or workload-balance requirements.
+\subsection{Manufacturing Implications and Limitations}\label{subsec:discussion}
+The proposed framework can be used as an offline-trained and online-applied scheduling decision-support module. Historical or simulated scheduling instances train the GNN predictor offline. For a new production order set, the trained predictor provides instance-aware dispatching-rule priors, and the dual-population solver returns trade-off schedules for delivery urgency, bottleneck machine availability, or workload-balance requirements.
 
 The current study also has limitations.
 First, the experiments are based on synthetic and public benchmark instances rather than a live production line.
 Second, $W_{\mathrm{total}}$ is a workload-related proxy and does not capture all components of energy consumption, such as machine idle energy, tool change, or time-of-use electricity tariffs.
-Third, the current framework focuses on static FJSP; dynamic arrivals, machine breakdowns, and urgent order insertion are not yet included.
-Fourth, the evaluation isolates each component against single-population and reduced dual-population variants; broader benchmarking against classical multi-objective algorithms (NSGA-III, MOEA/D) and a graph-free predictor, together with formal significance testing across runs, is left to future work.
-These limitations suggest natural extensions toward dynamic manufacturing environments and more detailed energy-aware scheduling models.
-
-
-
-
-
-
-
-
+Third, the current framework focuses on static FJSP. Dynamic arrivals, machine breakdowns, and urgent order insertion are not yet included.
+Fourth, the evaluation isolates each component against single-population and reduced dual-population variants. Broader benchmarking against NSGA-III, MOEA/D, and a graph-free predictor, together with formal significance testing, is left to future work.
 
 \section{Conclusions}\label{sec:conclusion}
 
-This paper developed a heterogeneous dual-population evolutionary optimization approach for multi-objective FJSP, in which an instance-specific learned prior strengthens evolutionary search on two fronts. A static heterogeneous disjunctive graph and an edge-conditioned GNN predictor learn instance-aware dispatching-rule distributions from offline scheduling data, and the learned distribution guides the initialization of two complementary populations: a main population for Pareto-front breadth and an exploratory population for intensified search around a high-quality core. Bidirectional exchange and AME coordinate the two populations during optimization.
+The paper developed a heterogeneous dual-population evolutionary optimization approach for multi-objective FJSP. The method uses an instance-specific learned prior to improve initialization and guide the later search. A static heterogeneous disjunctive graph and an edge-conditioned GNN predictor learn dispatching-rule distributions from offline scheduling data. The learned distribution initializes a main population for Pareto-front breadth and an exploratory population for intensified search around a high-quality core. Bidirectional exchange and AME connect the two populations during optimization.
 
-Experiments on synthetic instances and the public BehnkeGeiger benchmark showed that the approach improved Pareto-front quality, distribution uniformity, and cross-run stability compared with single-population and dual-population baselines. On the custom validation set, the full framework improved HV by 15.3\% over the dual-population baseline without AME, by 30.8\% over the single-population learned prior, and by 192.5\% over random NSGA-II, while reducing the spacing $\Delta$ and its variance $\Delta_v$ by 36.7\% and 31.3\%. These results show that strengthening multi-objective evolutionary search with an instance-specific learned prior and a heterogeneous dual-population structure yields consistent and complementary gains.
+Experiments on synthetic instances and the public BehnkeGeiger benchmark showed that the approach improved Pareto-front quality, distribution uniformity, and cross-run stability compared with single-population and dual-population baselines. On the custom validation set, the full framework improved HV by 15.3\% over the dual-population baseline without AME, by 30.7\% over the single-population learned prior, and by 192.5\% over random NSGA-II. It also reduced $\Delta$ and $\Delta_v$ by 36.8\% and 31.5\%. Instance-specific prior learning and heterogeneous dual-population search therefore provide useful gains for multi-objective evolutionary scheduling.
 
-Future work will extend the framework to dynamic FJSP with machine breakdowns, order arrivals, and changing processing conditions. More realistic energy-consumption objectives can also be incorporated beyond workload-based proxies. Another promising direction is to combine learned scheduling priors with explainable decision-support interfaces so that production planners can understand why different Pareto schedules are recommended.
+Future work will extend the framework to dynamic FJSP with machine breakdowns, order arrivals, and changing processing conditions. More realistic energy-consumption objectives can also be incorporated beyond workload-based proxies, and learned scheduling priors can be combined with explainable decision-support interfaces.
+
+\bibliography{references}
 
 \section*{Statements and Declarations}
 
 \subsection*{Funding}
 
-The authors declare that no funds, grants, or other support were received during the preparation of this manuscript.
+This work was supported by the Guangdong Basic and Applied Basic Research Foundation (2023A1515140071), the National Natural Science Foundation of China (U22A20106), and the Fundamental Research Funds for the Central Universities (FRF-TP-25-032).
 
-\subsection*{Competing interests}
+\subsection*{Competing Interests}
 
 The authors have no relevant financial or non-financial interests to disclose.
 
-\subsection*{Author contributions}
+\subsection*{Ethics Approval and Consent}
 
-Jie He contributed to conceptualization, methodology, software, and writing of the original draft. Changqi Han contributed to methodology, software, validation, and investigation. Di Gu contributed to validation, data curation, and investigation. Yue Qi contributed to methodology, formal analysis, and manuscript review and editing. Shihong Duan contributed to supervision, project administration, and manuscript review and editing. Yue Qi and Shihong Duan are the corresponding authors. All authors read and approved the final manuscript.
+Not applicable.
 
-\subsection*{Data availability}
+\subsection*{Author Contributions}
 
-The datasets generated and analyzed during the current study are available from the corresponding authors on reasonable request.
+All authors contributed to the study conception, methodology, implementation, analysis, and manuscript preparation. Yue Qi and Shihong Duan are the corresponding authors. All authors read and approved the final manuscript.
 
-\subsection*{Code availability}
+\subsection*{Data and Code Availability}
 
-The code generated during the current study is not publicly available, as it forms part of ongoing research and further development. The methodology is described in detail in this paper; further clarification is available from the corresponding authors on reasonable request.
-
-\bibliography{references}
+The datasets are available from the corresponding authors on reasonable request. The code is not publicly available because it forms part of ongoing research.
 
 \end{document}
